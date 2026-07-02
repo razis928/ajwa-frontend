@@ -1,0 +1,6 @@
+{
+  "name": "Mise En Place",
+  "description": "An advanced, real-time restaurant management dashboard, POS system, and menu catalog builder for culinary professional oversight.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
