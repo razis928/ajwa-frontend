@@ -37,7 +37,7 @@ export const TopAppBar: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search menu, orders, or staff..."
+            placeholder="Search menu, orders, or employees..."
             className="w-full pl-9 pr-4 py-1.5 bg-ajwa-forest-dark/60 border border-ajwa-gold/20 rounded-xl text-sm font-sans text-white/90 placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-ajwa-gold/30 focus:border-ajwa-gold transition-all"
           />
           {searchQuery && (
