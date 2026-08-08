@@ -6,6 +6,8 @@ export const STORAGE_KEYS = {
   activities: 'mep_activities',
   ordersHistory: 'mep_orders_history',
   invoices: 'mep_invoices',
+  employees: 'mep_employees_v2',
+  credits: 'mep_credits_v2',
 } as const;
 
 export function loadFromStorage<T>(key: string, fallback: T): T {
