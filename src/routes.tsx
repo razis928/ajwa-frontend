@@ -7,6 +7,8 @@ import { POSView } from './components/POSView';
 import { AccountsView } from './components/AccountsView';
 import { VendorsView } from './components/VendorsView';
 import { CustomersView } from './components/CustomersView';
+import { EmployeesView } from './components/EmployeesView';
+import { CreditsView } from './components/CreditsView';
 import { SalesReportsView } from './components/SalesReportsView';
 import { AppLayout } from './layouts/AppLayout';
 
@@ -22,6 +24,8 @@ export const appRoutes: RouteObject[] = [
       { path: 'accounts', element: <AccountsView /> },
       { path: 'vendors', element: <VendorsView /> },
       { path: 'customers', element: <CustomersView /> },
+      { path: 'employees', element: <EmployeesView /> },
+      { path: 'credits', element: <CreditsView /> },
       { path: 'reports', element: <SalesReportsView /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
@@ -36,5 +40,7 @@ export const navItems = [
   { path: '/accounts', label: 'Accounts', end: false },
   { path: '/vendors', label: 'Vendors', end: false },
   { path: '/customers', label: 'Customers', end: false },
+  { path: '/employees', label: 'Employees', end: false },
+  { path: '/credits', label: 'Credits', end: false },
   { path: '/reports', label: 'Sales Reports', end: false },
 ] as const;

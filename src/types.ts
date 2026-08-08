@@ -61,7 +61,8 @@ export interface Order {
   subtotal: number;
   tax: number;
   total: number;
-  status: 'Active' | 'Paid' | 'Voided';
+  status: 'Active' | 'Paid' | 'Voided' | 'Credit';
+  paymentMethod?: 'Pay' | 'Credit';
   createdAt: string;
   customerId?: string;
   guestCount?: number;
@@ -118,4 +119,94 @@ export interface Invoice {
   status: 'Paid' | 'Pending' | 'Overdue';
   category: string;
   description?: string;
+}
+
+export type EmployeeRole =
+  | 'Manager'
+  | 'Head Chef'
+  | 'Chef'
+  | 'Tandoor Chef'
+  | 'Waiter'
+  | 'Cashier'
+  | 'Delivery Rider'
+  | 'Dishwasher'
+  | 'Cleaner';
+
+export type EmployeeDepartment =
+  | 'Management'
+  | 'Kitchen'
+  | 'Service'
+  | 'Delivery'
+  | 'Housekeeping';
+
+export const EMPLOYEE_ROLES: EmployeeRole[] = [
+  'Manager',
+  'Head Chef',
+  'Chef',
+  'Tandoor Chef',
+  'Waiter',
+  'Cashier',
+  'Delivery Rider',
+  'Dishwasher',
+  'Cleaner',
+];
+
+export const ROLE_DEPARTMENT: Record<EmployeeRole, EmployeeDepartment> = {
+  Manager: 'Management',
+  'Head Chef': 'Kitchen',
+  Chef: 'Kitchen',
+  'Tandoor Chef': 'Kitchen',
+  Waiter: 'Service',
+  Cashier: 'Service',
+  'Delivery Rider': 'Delivery',
+  Dishwasher: 'Housekeeping',
+  Cleaner: 'Housekeeping',
+};
+
+export interface Employee {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: EmployeeRole;
+  department: EmployeeDepartment;
+  joinDate: string;
+  salary: number;
+  salaryStatus: 'Paid' | 'Pending';
+  status: 'Active' | 'Inactive';
+}
+
+export interface CreditDetailsInput {
+  customerName: string;
+  phone: string;
+  cnic?: string;
+  address?: string;
+  notes?: string;
+  dueDate: string;
+}
+
+export type CreditCollectionAccount = 'Cash' | 'JazzCash' | 'Bank Account';
+
+export const CREDIT_COLLECTION_ACCOUNTS: CreditCollectionAccount[] = [
+  'Cash',
+  'JazzCash',
+  'Bank Account',
+];
+
+export interface CreditSale {
+  id: string;
+  orderId: string;
+  customerName: string;
+  phone: string;
+  cnic: string;
+  address: string;
+  notes: string;
+  amount: number;
+  dueDate: string;
+  status: 'Unpaid' | 'Paid';
+  createdAt: string;
+  orderType: 'Dine-In' | 'Takeaway' | 'Delivery';
+  itemsSummary: string;
+  receivedVia?: CreditCollectionAccount;
+  collectedAt?: string;
 }
