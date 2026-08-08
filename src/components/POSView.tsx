@@ -5,9 +5,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { MenuItem, Order, MENU_CATEGORIES } from '../types';
+import { MenuItem, Order, MENU_CATEGORIES, CreditDetailsInput } from '../types';
 import { PosOrderFields } from './PosOrderFields';
 import { formatPKR, formatPKRPrecise } from '../lib/currency';
+import { Modal } from './ui/Modal';
 import { 
   ShoppingBasket, 
   Minus, 
@@ -25,7 +26,9 @@ import {
   Coffee, 
   Utensils, 
   CheckCircle,
-  X 
+  X,
+  Wallet,
+  Banknote,
 } from 'lucide-react';
 
 export const POSView: React.FC = () => {
@@ -49,6 +52,17 @@ export const POSView: React.FC = () => {
   const [splitCount, setSplitCount] = useState(2);
   const [showSuccessPaymentModal, setShowSuccessPaymentModal] = useState(false);
   const [lastProcessedOrder, setLastProcessedOrder] = useState<Order | null>(null);
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [lastPaymentMethod, setLastPaymentMethod] = useState<'Pay' | 'Credit'>('Pay');
+  const [creditForm, setCreditForm] = useState<CreditDetailsInput>({
+    customerName: '',
+    phone: '',
+    cnic: '',
+    address: '',
+    notes: '',
+    dueDate: '',
+  });
 
   const categories = ['تمام آئٹمز', ...MENU_CATEGORIES];
 
@@ -83,14 +97,51 @@ export const POSView: React.FC = () => {
     });
   }, [menuItems, posCategory]);
 
+  const defaultDueDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().split('T')[0];
+  };
+
   const handlePayNow = () => {
     if (activeOrder.items.length === 0) return;
+    setShowPaymentMethodModal(true);
+  };
+
+  const completeCheckout = (method: 'Pay' | 'Credit', creditDetails?: CreditDetailsInput) => {
     const orderToRecord = { ...activeOrder };
-    const success = processPayment();
+    const success = processPayment(method, creditDetails);
     if (success) {
-      setLastProcessedOrder(orderToRecord);
+      setLastPaymentMethod(method);
+      setLastProcessedOrder({
+        ...orderToRecord,
+        status: method === 'Credit' ? 'Credit' : 'Paid',
+        paymentMethod: method,
+        customerName: creditDetails?.customerName || orderToRecord.customerName,
+        contactPhone: creditDetails?.phone || orderToRecord.contactPhone,
+      });
+      setShowPaymentMethodModal(false);
+      setShowCreditModal(false);
       setShowSuccessPaymentModal(true);
     }
+  };
+
+  const openCreditModal = () => {
+    setCreditForm({
+      customerName: activeOrder.customerName || '',
+      phone: activeOrder.contactPhone || '',
+      cnic: '',
+      address: activeOrder.deliveryAddress || '',
+      notes: '',
+      dueDate: defaultDueDate(),
+    });
+    setShowPaymentMethodModal(false);
+    setShowCreditModal(true);
+  };
+
+  const handleCreditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    completeCheckout('Credit', creditForm);
   };
 
   const handlePrint = () => {
@@ -358,6 +409,133 @@ export const POSView: React.FC = () => {
         </div>
       </aside>
 
+      {showPaymentMethodModal && (
+        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border border-zinc-100">
+            <div className="px-6 py-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
+              <h3 className="font-bold text-zinc-800 text-sm">Choose Payment Option</h3>
+              <button onClick={() => setShowPaymentMethodModal(false)} className="text-zinc-400 hover:text-zinc-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-zinc-500">
+                Total due <span className="font-bold text-zinc-800 font-mono">{formatPKR(activeOrder.total)}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => completeCheckout('Pay')}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 hover:border-amber-400 transition-all cursor-pointer"
+                >
+                  <span className="w-10 h-10 rounded-full bg-gradient-to-br from-ajwa-gold to-ajwa-gold-light text-ajwa-forest-dark flex items-center justify-center">
+                    <Banknote className="w-5 h-5" />
+                  </span>
+                  <span className="text-sm font-bold text-zinc-800">Pay</span>
+                  <span className="text-[10px] text-zinc-500 text-center">Collect cash now</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreditModal}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-ajwa-forest/40 transition-all cursor-pointer"
+                >
+                  <span className="w-10 h-10 rounded-full bg-ajwa-forest/10 text-ajwa-forest flex items-center justify-center">
+                    <Wallet className="w-5 h-5" />
+                  </span>
+                  <span className="text-sm font-bold text-zinc-800">Credit</span>
+                  <span className="text-[10px] text-zinc-500 text-center">Pay later (udhaar)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCreditModal && (
+        <Modal
+          title="Credit Customer Details"
+          onClose={() => setShowCreditModal(false)}
+          maxWidth="max-w-md"
+        >
+          <form onSubmit={handleCreditSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs flex justify-between">
+              <span className="text-amber-800 font-semibold">Credit amount</span>
+              <span className="font-mono font-bold text-amber-900">{formatPKR(activeOrder.total)}</span>
+            </div>
+            <div className="flex flex-col">
+              <label className="label-field">Customer Name *</label>
+              <input
+                type="text"
+                required
+                value={creditForm.customerName}
+                onChange={e => setCreditForm({ ...creditForm, customerName: e.target.value })}
+                className="input-field"
+                placeholder="Full name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col">
+                <label className="label-field">Phone *</label>
+                <input
+                  type="tel"
+                  required
+                  value={creditForm.phone}
+                  onChange={e => setCreditForm({ ...creditForm, phone: e.target.value })}
+                  className="input-field"
+                  placeholder="03XX-XXXXXXX"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="label-field">CNIC</label>
+                <input
+                  type="text"
+                  value={creditForm.cnic || ''}
+                  onChange={e => setCreditForm({ ...creditForm, cnic: e.target.value })}
+                  className="input-field"
+                  placeholder="xxxxx-xxxxxxx-x"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <label className="label-field">Address</label>
+              <input
+                type="text"
+                value={creditForm.address || ''}
+                onChange={e => setCreditForm({ ...creditForm, address: e.target.value })}
+                className="input-field"
+                placeholder="Street, area, city"
+              />
+            </div>
+            <div className="flex flex-col">
+              <label className="label-field">Due Date *</label>
+              <input
+                type="date"
+                required
+                value={creditForm.dueDate}
+                onChange={e => setCreditForm({ ...creditForm, dueDate: e.target.value })}
+                className="input-field"
+              />
+            </div>
+            <div className="flex flex-col">
+              <label className="label-field">Notes</label>
+              <textarea
+                rows={2}
+                value={creditForm.notes || ''}
+                onChange={e => setCreditForm({ ...creditForm, notes: e.target.value })}
+                className="input-field resize-none"
+                placeholder="Any extra details"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-4 border-t border-zinc-100">
+              <button type="button" onClick={() => setShowCreditModal(false)} className="btn-secondary">
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary">Save Credit</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {/* MODAL 1: Discount Applicator */}
       {showDiscountModal && (
         <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -450,9 +628,13 @@ export const POSView: React.FC = () => {
               <CheckCircle className="w-8 h-8" />
             </div>
             <div>
-              <h3 className="font-sans font-bold text-zinc-900 text-base">Payment Complete!</h3>
+              <h3 className="font-sans font-bold text-zinc-900 text-base">
+                {lastPaymentMethod === 'Credit' ? 'Credit Recorded!' : 'Payment Complete!'}
+              </h3>
               <p className="text-xs text-zinc-500 mt-1.5">
-                Transaction recorded. POS workstation reset for the next seating ticket.
+                {lastPaymentMethod === 'Credit'
+                  ? 'Udhaar saved. Find it on the Credits listing page.'
+                  : 'Transaction recorded. POS workstation reset for the next seating ticket.'}
               </p>
             </div>
             {lastProcessedOrder && (
@@ -462,9 +644,15 @@ export const POSView: React.FC = () => {
                   <span className="font-mono">{lastProcessedOrder.id}</span>
                 </div>
                 <div className="flex justify-between text-zinc-500">
-                  <span>Total Settled</span>
+                  <span>{lastPaymentMethod === 'Credit' ? 'Credit Amount' : 'Total Settled'}</span>
                   <span className="font-mono text-amber-700 font-bold">{formatPKR(lastProcessedOrder.total)}</span>
                 </div>
+                {lastPaymentMethod === 'Credit' && lastProcessedOrder.customerName && (
+                  <div className="flex justify-between text-zinc-500">
+                    <span>Customer</span>
+                    <span className="font-semibold text-zinc-700">{lastProcessedOrder.customerName}</span>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex gap-2">
@@ -514,6 +702,9 @@ export const POSView: React.FC = () => {
               <p className="text-[10px] text-left">Time: {new Date(printedReceipt.createdAt).toLocaleTimeString()}</p>
               <p className="text-[10px] text-left font-bold">Ticket: {printedReceipt.id}</p>
               <p className="text-[10px] text-left">Service: {printedReceipt.type}</p>
+              <p className="text-[10px] text-left">
+                Payment: {printedReceipt.paymentMethod === 'Credit' || printedReceipt.status === 'Credit' ? 'CREDIT (Udhaar)' : 'PAID'}
+              </p>
               {printedReceipt.type === 'Takeaway' && (
                 <>
                   <p className="text-[10px] text-left">Customer: {printedReceipt.customerName || 'Guest'}</p>
