@@ -13,6 +13,8 @@ import {
   CreditCard,
   Truck,
   Users,
+  UserCheck,
+  Wallet,
   Settings,
   BarChart3,
   Crown,
@@ -27,6 +29,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   '/accounts': CreditCard,
   '/vendors': Truck,
   '/customers': Users,
+  '/employees': UserCheck,
+  '/credits': Wallet,
   '/reports': BarChart3,
 };
 
