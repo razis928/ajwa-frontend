@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { MenuItem, Order, OrderItem, Vendor, Customer, Activity, InventoryItem, Invoice } from '../types';
+import { MenuItem, Order, OrderItem, Vendor, Customer, Activity, InventoryItem, Invoice, Employee, CreditSale, CreditDetailsInput, CreditCollectionAccount } from '../types';
 import { 
   INITIAL_MENU_ITEMS, 
   INITIAL_VENDORS, 
@@ -12,11 +12,13 @@ import {
   INITIAL_ACTIVITIES, 
   INITIAL_INVENTORY,
   INITIAL_INVOICES,
+  INITIAL_EMPLOYEES,
+  INITIAL_CREDITS,
 } from '../data';
 import { STORAGE_KEYS, loadFromStorage } from '../lib/storage';
 import { formatPKR } from '../lib/currency';
 
-export type AppView = 'dashboard' | 'inventory' | 'menu' | 'pos' | 'accounts' | 'vendors' | 'customers' | 'reports';
+export type AppView = 'dashboard' | 'inventory' | 'menu' | 'pos' | 'accounts' | 'vendors' | 'customers' | 'employees' | 'credits' | 'reports';
 
 export interface ToastMessage {
   message: string;
@@ -49,9 +51,13 @@ interface AppContextType {
   setOrderType: (type: 'Dine-In' | 'Takeaway' | 'Delivery') => void;
   setTableNumber: (table: string) => void;
   updateOrderDetails: (details: Partial<Order>) => void;
-  processPayment: () => boolean;
+  processPayment: (method?: 'Pay' | 'Credit', creditDetails?: CreditDetailsInput) => boolean;
   printedReceipt: Order | null;
   setPrintedReceipt: (order: Order | null) => void;
+
+  credits: CreditSale[];
+  settleCredit: (id: string, receivedVia: CreditCollectionAccount) => void;
+  deleteCredit: (id: string) => void;
 
   inventoryItems: InventoryItem[];
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
@@ -74,6 +80,13 @@ interface AppContextType {
   addInvoice: (invoice: Omit<Invoice, 'id'>) => void;
   updateInvoice: (id: string, invoice: Partial<Invoice>) => void;
   deleteInvoice: (id: string) => void;
+
+  employees: Employee[];
+  addEmployee: (employee: Omit<Employee, 'id'>) => void;
+  updateEmployee: (id: string, employee: Partial<Employee>) => void;
+  deleteEmployee: (id: string) => void;
+  markSalaryPaid: (id: string) => void;
+  markAllSalariesPaid: () => void;
 
   grossRevenue: number;
   totalOrdersCount: number;
@@ -187,6 +200,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [invoices, setInvoices] = useState<Invoice[]>(() =>
     loadFromStorage(STORAGE_KEYS.invoices, INITIAL_INVOICES)
   );
+  const [employees, setEmployees] = useState<Employee[]>(() =>
+    loadFromStorage(STORAGE_KEYS.employees, INITIAL_EMPLOYEES)
+  );
+  const [credits, setCredits] = useState<CreditSale[]>(() =>
+    loadFromStorage(STORAGE_KEYS.credits, INITIAL_CREDITS)
+  );
 
   const [grossRevenue, setGrossRevenue] = useState(42850.00);
   const [totalOrdersCount, setTotalOrdersCount] = useState(1284);
@@ -200,6 +219,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.activities, JSON.stringify(activities)); }, [activities]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.ordersHistory, JSON.stringify(ordersHistory)); }, [ordersHistory]);
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.invoices, JSON.stringify(invoices)); }, [invoices]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.employees, JSON.stringify(employees)); }, [employees]);
+  useEffect(() => { localStorage.setItem(STORAGE_KEYS.credits, JSON.stringify(credits)); }, [credits]);
 
   const lowStockItems = inventoryItems.filter(item => item.stock <= item.minThreshold);
 
@@ -385,11 +406,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveOrder(prev => ({ ...prev, ...details }));
   };
 
-  const processPayment = (): boolean => {
+  const processPayment = (
+    method: 'Pay' | 'Credit' = 'Pay',
+    creditDetails?: CreditDetailsInput
+  ): boolean => {
     const validationError = validateOrderForPayment(activeOrder, selectedCustomerId);
     if (validationError) {
       showToast(validationError, 'error');
       return false;
+    }
+
+    if (method === 'Credit') {
+      const creditName = creditDetails?.customerName?.trim();
+      const creditPhone = creditDetails?.phone?.trim();
+      if (!creditName) {
+        showToast('Please enter credit customer name.', 'error');
+        return false;
+      }
+      if (!creditPhone) {
+        showToast('Please enter credit customer phone.', 'error');
+        return false;
+      }
+      if (!creditDetails?.dueDate) {
+        showToast('Please select a due date.', 'error');
+        return false;
+      }
     }
 
     const selectedCustomer = selectedCustomerId
@@ -397,11 +438,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : undefined;
 
     let resolvedCustomerId = selectedCustomerId;
-    let resolvedName = activeOrder.customerName || selectedCustomer?.name;
-    let resolvedPhone = activeOrder.contactPhone || selectedCustomer?.phone;
+    let resolvedName =
+      method === 'Credit'
+        ? creditDetails?.customerName?.trim()
+        : activeOrder.customerName || selectedCustomer?.name;
+    let resolvedPhone =
+      method === 'Credit'
+        ? creditDetails?.phone?.trim()
+        : activeOrder.contactPhone || selectedCustomer?.phone;
     let wasNewCustomer = false;
 
     const shouldTrackCustomer =
+      method === 'Credit' ||
       activeOrder.type !== 'Dine-In' ||
       Boolean(activeOrder.customerName?.trim() && activeOrder.contactPhone?.trim()) ||
       Boolean(selectedCustomerId);
@@ -410,8 +458,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const resolved = resolveCustomerForOrder(
         customers,
         selectedCustomerId,
-        activeOrder.customerName || selectedCustomer?.name,
-        activeOrder.contactPhone || selectedCustomer?.phone,
+        resolvedName || activeOrder.customerName || selectedCustomer?.name,
+        resolvedPhone || activeOrder.contactPhone || selectedCustomer?.phone,
         activeOrder.total
       );
 
@@ -446,29 +494,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const paidOrder: Order = {
+    const completedOrder: Order = {
       ...activeOrder,
-      status: 'Paid',
+      status: method === 'Credit' ? 'Credit' : 'Paid',
+      paymentMethod: method,
       createdAt: new Date().toISOString(),
       customerId: resolvedCustomerId ?? undefined,
       customerName: resolvedName,
       contactPhone: resolvedPhone,
     };
 
-    setOrdersHistory(prev => [paidOrder, ...prev]);
+    if (method === 'Credit' && creditDetails) {
+      const credit: CreditSale = {
+        id: `cr-${Date.now()}`,
+        orderId: completedOrder.id,
+        customerName: creditDetails.customerName.trim(),
+        phone: creditDetails.phone.trim(),
+        cnic: creditDetails.cnic?.trim() || '',
+        address: creditDetails.address?.trim() || '',
+        notes: creditDetails.notes?.trim() || '',
+        amount: completedOrder.total,
+        dueDate: creditDetails.dueDate,
+        status: 'Unpaid',
+        createdAt: completedOrder.createdAt,
+        orderType: completedOrder.type,
+        itemsSummary: completedOrder.items.map(i => `${i.quantity}x ${i.name}`).join(', '),
+      };
+      setCredits(prev => [credit, ...prev]);
+    }
+
+    setOrdersHistory(prev => [completedOrder, ...prev]);
 
     const newActivity: Activity = {
       id: `act-${Date.now()}`,
       type: 'order',
-      message: `Completed Order ${paidOrder.id}`,
+      message: method === 'Credit'
+        ? `Credit sale ${completedOrder.id}`
+        : `Completed Order ${completedOrder.id}`,
       time: 'Just now',
-      details: formatOrderActivityDetails(paidOrder),
+      details: method === 'Credit'
+        ? `${completedOrder.customerName} · ${formatPKR(completedOrder.total)} due ${creditDetails?.dueDate}`
+        : formatOrderActivityDetails(completedOrder),
     };
     setActivities(prev => [newActivity, ...prev]);
 
     setInventoryItems(prevInv => prevInv.map(inv => {
       let deductAmount = 0;
-      paidOrder.items.forEach(item => {
+      completedOrder.items.forEach(item => {
         const name = item.name.toLowerCase();
         const invName = inv.name.toLowerCase();
         if (name.includes('wine') && invName.includes('wine')) deductAmount += item.quantity;
@@ -499,8 +571,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDiscountPercentage(0);
     setSelectedCustomerId(null);
     const newCustomerMsg = wasNewCustomer ? ` New customer "${resolvedName}" saved.` : '';
-    showToast(`Payment of ${formatPKR(paidOrder.total)} processed successfully.${newCustomerMsg}`, 'success');
+    if (method === 'Credit') {
+      showToast(`Credit of ${formatPKR(completedOrder.total)} recorded for ${completedOrder.customerName}.${newCustomerMsg}`, 'success');
+    } else {
+      showToast(`Payment of ${formatPKR(completedOrder.total)} processed successfully.${newCustomerMsg}`, 'success');
+    }
     return true;
+  };
+
+  const settleCredit = (id: string, receivedVia: CreditCollectionAccount) => {
+    const credit = credits.find(c => c.id === id);
+    if (!credit) return;
+    setCredits(prev => prev.map(c => c.id === id ? {
+      ...c,
+      status: 'Paid',
+      receivedVia,
+      collectedAt: new Date().toISOString(),
+    } : c));
+    setOrdersHistory(prev => prev.map(o =>
+      o.id === credit.orderId ? { ...o, status: 'Paid' } : o
+    ));
+    setActivities(prev => [{
+      id: `act-${Date.now()}`,
+      type: 'payout',
+      message: `Credit collected: ${credit.customerName}`,
+      time: 'Just now',
+      details: `${credit.orderId} · ${formatPKR(credit.amount)} via ${receivedVia}`,
+    }, ...prev]);
+    showToast(`Collected ${formatPKR(credit.amount)} via ${receivedVia} from ${credit.customerName}`, 'success');
+  };
+
+  const deleteCredit = (id: string) => {
+    const credit = credits.find(c => c.id === id);
+    setCredits(prev => prev.filter(c => c.id !== id));
+    showToast(`Removed credit record for "${credit?.customerName || 'customer'}"`, 'info');
   };
 
   const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
@@ -597,6 +701,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Deleted invoice ${invoice?.id || ''}`, 'info');
   };
 
+  const addEmployee = (employee: Omit<Employee, 'id'>) => {
+    const newEmployee: Employee = { ...employee, id: `e-${Date.now()}` };
+    setEmployees(prev => [...prev, newEmployee]);
+    setActivities(prev => [{
+      id: `act-${Date.now()}`,
+      type: 'staff',
+      message: `New staff hired: ${newEmployee.name}`,
+      time: 'Just now',
+      details: `${newEmployee.role} · ${formatPKR(newEmployee.salary)} / month`,
+    }, ...prev]);
+    showToast(`Added employee "${newEmployee.name}"`, 'success');
+  };
+
+  const updateEmployee = (id: string, updated: Partial<Employee>) => {
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
+    showToast('Updated employee details', 'success');
+  };
+
+  const deleteEmployee = (id: string) => {
+    const employee = employees.find(e => e.id === id);
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    showToast(`Removed employee "${employee?.name || 'employee'}"`, 'info');
+  };
+
+  const markSalaryPaid = (id: string) => {
+    const employee = employees.find(e => e.id === id);
+    if (!employee) return;
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, salaryStatus: 'Paid' } : e));
+    setActivities(prev => [{
+      id: `act-${Date.now()}`,
+      type: 'payout',
+      message: `Salary paid: ${employee.name}`,
+      time: 'Just now',
+      details: `${employee.role} · ${formatPKR(employee.salary)}`,
+    }, ...prev]);
+    showToast(`Marked salary paid for ${employee.name}`, 'success');
+  };
+
+  const markAllSalariesPaid = () => {
+    const pending = employees.filter(e => e.salaryStatus === 'Pending' && e.status === 'Active');
+    if (pending.length === 0) {
+      showToast('No pending salaries to pay', 'info');
+      return;
+    }
+    setEmployees(prev => prev.map(e =>
+      e.status === 'Active' && e.salaryStatus === 'Pending' ? { ...e, salaryStatus: 'Paid' } : e
+    ));
+    const total = pending.reduce((sum, e) => sum + e.salary, 0);
+    setActivities(prev => [{
+      id: `act-${Date.now()}`,
+      type: 'payout',
+      message: `Payroll run completed`,
+      time: 'Just now',
+      details: `${pending.length} staff paid · ${formatPKR(total)}`,
+    }, ...prev]);
+    showToast(`Paid salaries for ${pending.length} employees (${formatPKR(total)})`, 'success');
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -626,6 +788,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         processPayment,
         printedReceipt,
         setPrintedReceipt,
+        credits,
+        settleCredit,
+        deleteCredit,
         inventoryItems,
         addInventoryItem,
         updateInventoryItem,
@@ -644,6 +809,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addInvoice,
         updateInvoice,
         deleteInvoice,
+        employees,
+        addEmployee,
+        updateEmployee,
+        deleteEmployee,
+        markSalaryPaid,
+        markAllSalariesPaid,
         grossRevenue,
         totalOrdersCount,
         avgOrderValue,
